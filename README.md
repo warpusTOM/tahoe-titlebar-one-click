@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Jhon-Lloyd Molino Tahoe Titlebar</h1>
+  <h1></h1>
   <p><strong>One-click Tahoe-style close, minimize, and maximize buttons for Windows.</strong></p>
 
   <img src="Assets/showcase.png" alt="Tahoe-style titlebar showcase on Windows" width="834" />
