@@ -1,6 +1,4 @@
-# Jhon-Lloyd Molino Tahoe Titlebar
 
-# Jhon-Lloyd Molino Tahoe Titlebar
 
 One-click Windows titlebar customizer for the close, minimize, and maximize buttons.
 
