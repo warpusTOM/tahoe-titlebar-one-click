@@ -1,22 +1,17 @@
 # Public Release Notes
 
-The laptop-test EXE is built and works as a private one-click tester, but it embeds binary theme/system assets:
+This public build keeps the installer redistributable:
 
-- `Assets/TahoeTraffic.theme`
-- `Assets/TahoeTraffic.msstyles`
-- `Assets/ApplicationFrame.dll.patched`
+- It does not bundle StartAllBack, StartAllBack license data, or private StartAllBack program files.
+- It does not bundle Microsoft system DLLs.
+- Private/test assets such as `ApplicationFrame.dll.patched`, `TahoeTraffic.theme`, and `TahoeTraffic.msstyles` are intentionally ignored by git unless redistribution rights are cleared.
 
-Do not push those assets or the private EXE to a public repository unless redistribution rights are cleared.
+The app includes the one-click UX:
 
-For a public release, replace the embedded assets with:
+- `Tahoe style close/minimize/maximize + taskbar`
+- `Old Windows close/minimize/maximize + taskbar`
 
-- Original/open-license Tahoe-style button assets, or
-- A runtime patcher that generates the required resources from user-provided/local files.
-
-The app already includes the correct UX:
-
-- `Tahoe style close/minimize/maximize`
-- `Old Windows close/minimize/maximize`
+When StartAllBack is already installed on the target PC, the public build applies the Tahoe translucent taskbar/Start menu profile and generates a local Tahoe traffic-light orb.
 
 Backups are written to:
 

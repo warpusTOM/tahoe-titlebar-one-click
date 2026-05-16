@@ -1,5 +1,7 @@
 using Microsoft.Win32;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -50,13 +52,16 @@ public sealed class TahoeInstaller
             Step(23, "Applying dark glass/titlebar registry settings...");
             InstallRegistrySettings();
 
-            Step(36, "Forcing browser native Windows titlebars...");
+            Step(32, "Applying Tahoe StartAllBack taskbar/start menu profile...");
+            var restartExplorer = InstallStartAllBackProfile();
+
+            Step(42, "Forcing browser native Windows titlebars...");
             InstallBrowsers();
 
-            Step(58, "Forcing Windows Terminal to use OS titlebar buttons...");
+            Step(62, "Forcing Windows Terminal to use OS titlebar buttons...");
             InstallTerminal();
 
-            Step(70, "Applying Settings/UWP ApplicationFrame patch with safety checks...");
+            Step(74, "Applying Settings/UWP ApplicationFrame patch with safety checks...");
             InstallApplicationFramePatch();
 
             Step(88, "Saving backup manifest...");
@@ -65,6 +70,10 @@ public sealed class TahoeInstaller
             Step(94, "Refreshing Windows shell settings...");
             BroadcastSettingChange();
             RunQuiet("rundll32.exe", "user32.dll,UpdatePerUserSystemParameters", ignoreExitCode: true);
+            if (restartExplorer)
+            {
+                RestartExplorer();
+            }
 
             Step(100, "Tahoe titlebar install finished.");
         });
@@ -128,6 +137,7 @@ public sealed class TahoeInstaller
             }
 
             BroadcastSettingChange();
+            RestartExplorer();
             Step(100, "Restore finished. Restart Windows for the safest full rollback.");
         });
     }
@@ -193,6 +203,107 @@ public sealed class TahoeInstaller
         SetString(metrics, "MenuHeight", "-285");
         SetString(metrics, "MenuWidth", "-285");
         SetString(metrics, "MinAnimate", "1");
+    }
+
+    private bool InstallStartAllBackProfile()
+    {
+        using var existingStartIsBack = Registry.CurrentUser.OpenSubKey(@"Software\StartIsBack");
+        var installed = Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "StartAllBack")) ||
+            File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "StartAllBack", "StartAllBackCfg.exe")) ||
+            existingStartIsBack != null;
+
+        if (!installed)
+        {
+            log("StartAllBack not detected, skipped taskbar/start menu profile.");
+            log("Install StartAllBack separately, then run this tool again to apply the Tahoe taskbar profile.");
+            return false;
+        }
+
+        var orbPath = InstallTahoeOrb();
+
+        using (var startIsBack = Registry.CurrentUser.CreateSubKey(@"Software\StartIsBack"))
+        {
+            SetDword(startIsBack, "NavBarGlass", 1);
+            SetDword(startIsBack, "TaskbarTranslucentEffect", 3);
+            SetDword(startIsBack, "TaskbarColoring", 1);
+            SetDword(startIsBack, "TaskbarColor", 659480);
+            SetDword(startIsBack, "TaskbarAlpha", 26);
+            SetDword(startIsBack, "TaskbarBlur", 0);
+            SetDword(startIsBack, "StartMenuColoring", 1);
+            SetDword(startIsBack, "StartMenuColor", 659480);
+            SetDword(startIsBack, "StartMenuAlpha", 36);
+            SetDword(startIsBack, "StartMenuBlur", 0);
+            SetDword(startIsBack, "FrameStyle", 1);
+            SetDword(startIsBack, "TaskbarOneSegment", 0);
+            SetDword(startIsBack, "TaskbarCenterIcons", 2);
+            SetDword(startIsBack, "FatTaskbar", 2);
+            SetDword(startIsBack, "TaskbarLargerIcons", 0);
+            SetDword(startIsBack, "TaskbarSpacierIcons", unchecked((int)0xFFFFFFFE));
+            SetDword(startIsBack, "Start_MinMFU", 10);
+            SetDword(startIsBack, "SettingsVersion", 6);
+            SetDword(startIsBack, "WelcomeShown", 3);
+            startIsBack?.SetValue("OrbBitmap", orbPath, RegistryValueKind.String);
+        }
+
+        using (var advanced = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"))
+        {
+            SetDword(advanced, "TaskbarMn", 0);
+            SetDword(advanced, "TaskbarAl", 0);
+            SetDword(advanced, "ShowTaskViewButton", 0);
+            SetDword(advanced, "ShowCopilotButton", 0);
+            SetDword(advanced, "Start_AccountNotifications", 0);
+            SetDword(advanced, "TaskbarSmallIcons", 0);
+            SetDword(advanced, "TaskbarGlomLevel", 0);
+            SetDword(advanced, "MMTaskbarGlomLevel", 0);
+            SetDword(advanced, "UseOLEDTaskbarTransparency", 1);
+            SetDword(advanced, "DisablePreviewDesktop", 1);
+        }
+
+        log("Applied StartAllBack Tahoe taskbar profile.");
+        log("Taskbar alpha=26, blur=0; Start menu alpha=36, blur=0; centered/spaced taskbar icons enabled.");
+        log("Tahoe orb installed: " + orbPath);
+        return true;
+    }
+
+    private string InstallTahoeOrb()
+    {
+        var orbDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StartAllBack", "Orbs");
+        Directory.CreateDirectory(orbDir);
+        var orbPath = Path.Combine(orbDir, "Tahoe Traffic Orb.bmp");
+
+        using var bitmap = new Bitmap(54, 162);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.Clear(Color.Transparent);
+
+        DrawOrbState(graphics, new Rectangle(0, 0, 54, 54), Color.FromArgb(18, 22, 28), 0);
+        DrawOrbState(graphics, new Rectangle(0, 54, 54, 54), Color.FromArgb(28, 36, 44), 3);
+        DrawOrbState(graphics, new Rectangle(0, 108, 54, 54), Color.FromArgb(10, 12, 16), -2);
+        bitmap.Save(orbPath, System.Drawing.Imaging.ImageFormat.Bmp);
+        return orbPath;
+    }
+
+    private static void DrawOrbState(Graphics graphics, Rectangle bounds, Color background, int lift)
+    {
+        var outer = new Rectangle(bounds.X + 5, bounds.Y + 5 + lift, 44, 44);
+        using var shadow = new SolidBrush(Color.FromArgb(90, 0, 0, 0));
+        using var bg = new SolidBrush(background);
+        using var edge = new Pen(Color.FromArgb(130, 210, 225, 235), 1f);
+        using var hi = new Pen(Color.FromArgb(65, 255, 255, 255), 1f);
+
+        graphics.FillEllipse(shadow, outer.X + 1, outer.Y + 2, outer.Width, outer.Height);
+        graphics.FillEllipse(bg, outer);
+        graphics.DrawEllipse(edge, outer);
+        graphics.DrawArc(hi, outer.X + 7, outer.Y + 6, outer.Width - 14, outer.Height - 14, 205, 130);
+
+        var y = outer.Y + 18;
+        var x = outer.X + 12;
+        using var red = new SolidBrush(Color.FromArgb(232, 89, 83));
+        using var yellow = new SolidBrush(Color.FromArgb(218, 195, 82));
+        using var green = new SolidBrush(Color.FromArgb(39, 184, 96));
+        graphics.FillEllipse(red, x, y, 6, 6);
+        graphics.FillEllipse(yellow, x + 13, y, 6, 6);
+        graphics.FillEllipse(green, x + 26, y, 6, 6);
     }
 
     private void InstallBrowsers()
@@ -393,6 +504,9 @@ public sealed class TahoeInstaller
             ["HKCU-Themes.reg"] = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes",
             ["HKCU-DWM.reg"] = @"HKCU\Software\Microsoft\Windows\DWM",
             ["HKCU-WindowMetrics.reg"] = @"HKCU\Control Panel\Desktop\WindowMetrics",
+            ["HKCU-StartIsBack.reg"] = @"HKCU\Software\StartIsBack",
+            ["HKCU-Explorer-Advanced.reg"] = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+            ["HKCU-Explorer-StuckRects3.reg"] = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3",
             ["HKLM-Client-Brave.reg"] = @"HKLM\SOFTWARE\Clients\StartMenuInternet\Brave",
             ["HKLM-Client-Chrome.reg"] = @"HKLM\SOFTWARE\Clients\StartMenuInternet\Google Chrome",
             ["HKLM-Client-Edge.reg"] = @"HKLM\SOFTWARE\Clients\StartMenuInternet\Microsoft Edge",
@@ -411,6 +525,21 @@ public sealed class TahoeInstaller
         {
             var outFile = Path.Combine(regDir, file);
             RunQuiet("reg.exe", $"export \"{key}\" \"{outFile}\" /y", ignoreExitCode: true);
+        }
+    }
+
+    private void RestartExplorer()
+    {
+        log("Restarting Explorer to refresh taskbar/start menu style...");
+        RunQuiet("taskkill.exe", "/F /IM explorer.exe", ignoreExitCode: true);
+        Thread.Sleep(1000);
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            log("Explorer restart fallback needed: " + ex.Message);
         }
     }
 
@@ -575,6 +704,11 @@ public sealed class TahoeInstaller
     private static void SetString(RegistryKey? key, string name, string value)
     {
         key?.SetValue(name, value, RegistryValueKind.String);
+    }
+
+    private static void SetDword(RegistryKey? key, string name, int value)
+    {
+        key?.SetValue(name, value, RegistryValueKind.DWord);
     }
 
     private void Step(int percent, string message)

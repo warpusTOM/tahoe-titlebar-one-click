@@ -31,7 +31,7 @@ public partial class Form1 : Form
         var subtitle = new Label
         {
             AutoSize = false,
-            Text = "close/minimize/maximize tahoe style",
+            Text = "close/minimize/maximize + translucent Tahoe taskbar",
             Dock = DockStyle.Top,
             Height = 34,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -41,7 +41,7 @@ public partial class Form1 : Form
 
         applyButton = new Button
         {
-            Text = "Tahoe style close/minimize/maximize",
+            Text = "Tahoe style close/minimize/maximize + taskbar",
             Height = 52,
             Dock = DockStyle.Top,
             FlatStyle = FlatStyle.Flat,
@@ -55,7 +55,7 @@ public partial class Form1 : Form
 
         restoreButton = new Button
         {
-            Text = "Old Windows close/minimize/maximize",
+            Text = "Old Windows close/minimize/maximize + taskbar",
             Height = 46,
             Dock = DockStyle.Top,
             FlatStyle = FlatStyle.Flat,
@@ -93,7 +93,7 @@ public partial class Form1 : Form
             Height = 54,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(170, 178, 188),
-            Text = "One click applies Tahoe. The restore button uses the latest backup to bring back the old Windows buttons."
+            Text = "One click applies Tahoe titlebars and the StartAllBack taskbar profile when StartAllBack is installed."
         };
 
         var body = new Panel
@@ -111,17 +111,17 @@ public partial class Form1 : Form
         Controls.Add(subtitle);
         Controls.Add(title);
 
-        AppendLog("Ready. Choose Tahoe style, or restore old Windows buttons.");
+        AppendLog("Ready. Choose Tahoe style, or restore old Windows buttons/taskbar settings.");
     }
 
     private async void ApplyButton_Click(object? sender, EventArgs e)
     {
-        await RunBusyAsync("Applying Tahoe titlebar style...", installer => installer.Install());
+        await RunBusyAsync("Applying Tahoe titlebar/taskbar style...", installer => installer.Install());
     }
 
     private async void RestoreButton_Click(object? sender, EventArgs e)
     {
-        await RunBusyAsync("Restoring old Windows titlebar buttons from latest backup...", installer => installer.RestoreLatestBackup());
+        await RunBusyAsync("Restoring old Windows titlebar/taskbar settings from latest backup...", installer => installer.RestoreLatestBackup());
     }
 
     private async Task RunBusyAsync(string firstLine, Func<TahoeInstaller, Task> action)

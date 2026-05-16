@@ -1,6 +1,6 @@
 <div align="center">
-  <h1></h1>
-  <p><strong>One-click Tahoe-style close, minimize, and maximize buttons for Windows.</strong></p>
+  <h1>Jhon-Lloyd Molino Tahoe Titlebar</h1>
+  <p><strong>One-click Tahoe-style close, minimize, maximize, taskbar, and Start menu glass for Windows.</strong></p>
 
   <img src="Assets/showcase.png" alt="Tahoe-style titlebar showcase on Windows" width="834" />
 
@@ -16,7 +16,7 @@
 
 ---
 
-Tahoe Titlebar is a small Windows customizer that applies the macOS Tahoe-style traffic-light buttons to the normal Windows close, minimize, and maximize controls.
+Tahoe Titlebar is a small Windows customizer that applies the macOS Tahoe-style traffic-light buttons to the normal Windows close, minimize, and maximize controls. When StartAllBack is already installed, it also applies the matching translucent taskbar and Start menu profile.
 
 It was built for one-click testing across machines: run it as administrator, choose the Tahoe option, wait for it to finish, then restart affected apps.
 
@@ -30,8 +30,8 @@ The public release is intentionally safe to redistribute. It does not include pr
 
 ## One-Click Options
 
-- **Tahoe style close/minimize/maximize** applies the Tahoe titlebar setup.
-- **Old Windows close/minimize/maximize** restores from the latest backup when available.
+- **Tahoe style close/minimize/maximize + taskbar** applies the Tahoe titlebar setup and the StartAllBack taskbar profile when StartAllBack is detected.
+- **Old Windows close/minimize/maximize + taskbar** restores from the latest backup when available.
 
 Backups are written to:
 
@@ -45,7 +45,26 @@ C:\ProgramData\JhonLloydMolino\TahoeTitlebar\Backups
 - Browser native titlebar settings for Brave, Chrome, and Edge.
 - Windows Terminal titlebar settings.
 - DWM, dark mode, and titlebar-related registry settings.
+- StartAllBack taskbar and Start menu glass profile when StartAllBack is already installed.
+- Explorer taskbar visibility/alignment values that support the Tahoe taskbar profile.
 - Guarded `ApplicationFrame.dll` replacement support for Settings/UWP titlebars on supported builds.
+
+## StartAllBack Profile
+
+This project does **not** bundle StartAllBack, its license, or its private program files. Install StartAllBack separately first, then run the one-click EXE.
+
+The Tahoe profile applies these portable settings:
+
+- Taskbar glass/translucency with alpha `26` and blur `0`.
+- Start menu translucency with alpha `36` and blur `0`.
+- Tahoe-style taskbar coloring, centered/spaced taskbar icon behavior, and Explorer taskbar cleanup.
+- A locally generated neutral Tahoe traffic-light orb at:
+
+```text
+%LOCALAPPDATA%\StartAllBack\Orbs\Tahoe Traffic Orb.bmp
+```
+
+The installer backs up the previous StartAllBack and Explorer registry settings before changing them.
 
 ## Build
 
