@@ -41,7 +41,7 @@ public partial class Form1 : Form
 
         applyButton = new Button
         {
-            Text = "Tahoe style close/minimize/maximize + taskbar",
+            Text = "Fix Everything Automatically",
             Height = 52,
             Dock = DockStyle.Top,
             FlatStyle = FlatStyle.Flat,
@@ -93,7 +93,7 @@ public partial class Form1 : Form
             Height = 54,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(170, 178, 188),
-            Text = "One click applies Tahoe titlebars and the StartAllBack taskbar profile when StartAllBack is installed."
+            Text = "Runs diagnosis, applies every safe supported change, verifies what worked, and opens a final report."
         };
 
         var body = new Panel
@@ -111,12 +111,24 @@ public partial class Form1 : Form
         Controls.Add(subtitle);
         Controls.Add(title);
 
-        AppendLog("Ready. Choose Tahoe style, or restore old Windows buttons/taskbar settings.");
+        AppendLog("Ready. Choose Fix Everything Automatically, or restore old Windows buttons/taskbar settings.");
     }
 
     private async void ApplyButton_Click(object? sender, EventArgs e)
     {
-        await RunBusyAsync("Applying Tahoe titlebar/taskbar style...", installer => installer.Install());
+        await RunBusyAsync("Running Tahoe auto diagnose/configure/install/verify...", async installer =>
+        {
+            var report = await installer.FixEverythingAutomatically();
+            if (report.RebootRequired)
+            {
+                BeginInvoke(() => MessageBox.Show(
+                    this,
+                    "A reboot is required to finish the Settings/UWP titlebar patch safely.",
+                    "Tahoe reboot required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information));
+            }
+        });
     }
 
     private async void RestoreButton_Click(object? sender, EventArgs e)
@@ -137,7 +149,7 @@ public partial class Form1 : Form
         {
             await action(installer);
             SetProgress(100);
-            AppendLog("Done. Reopen apps to see all titlebar changes. Restart Windows for the safest full Settings/UWP result.");
+            AppendLog("Operation completed. Read the final report above for Full / Partial / Failed status.");
         }
         catch (Exception ex)
         {

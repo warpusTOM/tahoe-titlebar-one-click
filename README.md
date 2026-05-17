@@ -6,8 +6,8 @@
 
   <br><br>
 
-  <a href="https://github.com/warpusTOM/tahoe-titlebar-one-click/releases/latest">
-    <img src="https://img.shields.io/github/v/release/warpusTOM/tahoe-titlebar-one-click?label=release&color=22c55e" alt="Latest release" />
+  <a href="https://github.com/warpusTOM/Tahoe-Style-Min-Max-Close/releases/latest">
+    <img src="https://img.shields.io/github/v/release/warpusTOM/Tahoe-Style-Min-Max-Close?label=release&color=22c55e" alt="Latest release" />
   </a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?logo=windows&logoColor=white" alt="Windows 10 / 11" />
   <img src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 8" />
@@ -18,19 +18,19 @@
 
 Tahoe Titlebar is a small Windows customizer that applies the macOS Tahoe-style traffic-light buttons to the normal Windows close, minimize, and maximize controls. When StartAllBack is already installed, it also applies the matching translucent taskbar and Start menu profile.
 
-It was built for one-click testing across machines: run it as administrator, choose the Tahoe option, wait for it to finish, then restart affected apps.
+It was built for one-click testing across machines: run it as administrator, choose **Fix Everything Automatically**, wait for the diagnosis/install/verify flow, then read the final Full / Partial / Failed report.
 
 ## Download
 
 Get the latest public build from:
 
-[github.com/warpusTOM/tahoe-titlebar-one-click/releases/latest](https://github.com/warpusTOM/tahoe-titlebar-one-click/releases/latest)
+[github.com/warpusTOM/Tahoe-Style-Min-Max-Close/releases/latest](https://github.com/warpusTOM/Tahoe-Style-Min-Max-Close/releases/latest)
 
-The public release is intentionally safe to redistribute. It does not include private Microsoft system DLLs.
+The public release is intentionally safe to redistribute. It does not include Microsoft system DLLs, and it does not claim a full visual replacement when the theme assets are missing.
 
 ## One-Click Options
 
-- **Tahoe style close/minimize/maximize + taskbar** applies the Tahoe titlebar setup and the StartAllBack taskbar profile when StartAllBack is detected.
+- **Fix Everything Automatically** runs diagnosis, creates the `Assets` folder if needed, applies every safe supported change, verifies the result, and opens a final report.
 - **Old Windows close/minimize/maximize + taskbar** restores from the latest backup when available.
 
 Backups are written to:
@@ -41,13 +41,31 @@ C:\ProgramData\JhonLloydMolino\TahoeTitlebar\Backups
 
 ## What It Changes
 
-- Tahoe theme and `.msstyles` package when those assets are present.
+- Tahoe theme and `.msstyles` package when those assets are present as embedded private assets or sidecar files in `.\Assets`.
 - Browser native titlebar settings for Brave, Chrome, and Edge.
 - Windows Terminal titlebar settings.
 - DWM, dark mode, and titlebar-related registry settings.
 - StartAllBack taskbar and Start menu glass profile when StartAllBack is already installed.
 - Explorer taskbar visibility/alignment values that support the Tahoe taskbar profile.
-- Guarded `ApplicationFrame.dll` replacement support for Settings/UWP titlebars on supported builds.
+- Guarded `ApplicationFrame.dll` replacement support for Settings/UWP titlebars only when the current Windows build/hash is explicitly supported and a matching verified patch asset is available.
+
+## Auto Diagnose and Final Report
+
+Before installing, the app checks:
+
+- Windows version/build and current `ApplicationFrame.dll` SHA256.
+- Whether `TahoeTraffic.theme`, `TahoeTraffic.msstyles`, and `ApplicationFrame.dll.patched` are available as embedded or sidecar assets.
+- StartAllBack installation.
+- Windows Terminal settings path.
+- Brave, Chrome, and Edge executables, profiles, and shortcuts.
+
+After installing, the app opens a final report with:
+
+- `Full` when the core Tahoe theme and `.msstyles` install succeeded.
+- `Partial` when only safe browser, registry, terminal, or StartAllBack changes were applied.
+- `Failed` when no supported changes were applied.
+
+Unsupported `ApplicationFrame.dll` builds are never patched blindly. They are reported as `Settings/UWP patch skipped`, while safe parts still run.
 
 ## StartAllBack Profile
 
@@ -89,3 +107,13 @@ This source tree does not publish private/test binary assets. For your own priva
 - `ApplicationFrame.dll.patched`
 
 Do not publicly redistribute Microsoft system DLLs as standalone assets.
+
+For public builds, users may still provide their own allowed sidecar files in `.\Assets` beside the EXE:
+
+```text
+Assets\TahoeTraffic.theme
+Assets\TahoeTraffic.msstyles
+Assets\ApplicationFrame.dll.patched
+```
+
+The DLL patch is used only if the current `ApplicationFrame.dll` hash matches the supported-build table in source code and the patch asset hash matches the expected patched hash.
