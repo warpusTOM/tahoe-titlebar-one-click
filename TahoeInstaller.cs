@@ -16,6 +16,7 @@ public sealed class TahoeInstaller
     private const string KnownPatchedApplicationFrameSha256 = "E714259B03ECBE49E2A6F04AC471519F7D2E002CA50FA519A01B7B198D86DBA2";
     private const string PrivateApplicationFramePatchManifestName = "ApplicationFrame.patch.json";
     private const string DefaultApplicationFramePatchAssetName = "ApplicationFrame.dll.patched";
+    private const string SecureUxThemeReleaseBaseUrl = "https://github.com/namazso/SecureUxTheme/releases/latest/download/";
     private static readonly SupportedApplicationFramePatch[] SupportedApplicationFramePatches =
     [
         new(
@@ -78,7 +79,10 @@ public sealed class TahoeInstaller
             Step(8, "Backup folder: " + currentBackupDir);
             TryApply("Registry backup", BackupRegistry, report);
 
-            Step(15, "Installing TahoeTraffic theme package when available...");
+            Step(12, "Ensuring custom theme signature bypass is available...");
+            TryApply("Custom theme signature bypass", () => InstallCustomThemeEngine(report), report);
+
+            Step(18, "Installing TahoeTraffic theme package when available...");
             TryApply("Theme package", () => InstallThemePackage(report), report);
 
             Step(25, "Applying dark glass/titlebar registry settings...");
@@ -230,6 +234,8 @@ public sealed class TahoeInstaller
             CurrentThemeVisualStylePath = GetThemeVisualStylePath(GetCurrentThemePath()),
             TahoeThemeTargetPath = GetTahoeThemePath(),
             TahoeThemeCurrentlyApplied = IsTahoeThemeActive(),
+            CustomThemeEngineInstalled = IsSecureUxThemeInstalled(),
+            SecureUxThemeInstallerAsset = FindAsset(GetSecureUxThemeInstallerName()),
             StartAllBackInstalled = IsStartAllBackInstalled(),
             WindowsTerminalSettingsPath = GetWindowsTerminalSettingsPath(),
             BrowserProfiles = GetBrowserDiagnostics()
@@ -262,6 +268,8 @@ public sealed class TahoeInstaller
         log("Current theme: " + (string.IsNullOrWhiteSpace(report.CurrentThemePath) ? "unknown" : report.CurrentThemePath));
         log("Current visual style: " + (string.IsNullOrWhiteSpace(report.CurrentThemeVisualStylePath) ? "unknown" : report.CurrentThemeVisualStylePath));
         log("Tahoe theme currently applied: " + YesNo(report.TahoeThemeCurrentlyApplied));
+        log("Custom theme signature bypass installed: " + YesNo(report.CustomThemeEngineInstalled));
+        log("SecureUxTheme installer asset: " + report.SecureUxThemeInstallerAsset.Describe());
         log("StartAllBack installed: " + YesNo(report.StartAllBackInstalled));
         log("Windows Terminal settings: " + (report.WindowsTerminalSettingsExists ? report.WindowsTerminalSettingsPath : "missing"));
         foreach (var browser in report.BrowserProfiles)
@@ -384,6 +392,106 @@ public sealed class TahoeInstaller
         }
     }
 
+    private void InstallCustomThemeEngine(InstallReport report)
+    {
+        if (IsSecureUxThemeInstalled())
+        {
+            log("SecureUxTheme/custom theme signature bypass detected.");
+            report.CustomThemeEngineConfigured = true;
+            return;
+        }
+
+        var installerName = GetSecureUxThemeInstallerName();
+        var sidecar = FindSidecarAsset(installerName);
+        var installerPath = sidecar ?? DownloadSecureUxThemeInstaller(installerName);
+        log(sidecar == null
+            ? "Downloaded SecureUxTheme installer: " + installerPath
+            : "Using sidecar SecureUxTheme installer: " + installerPath);
+        log("SecureUxTheme installer SHA256: " + Sha256(installerPath));
+
+        var exitCode = RunQuietForExit("msiexec.exe", $"/i \"{installerPath}\" /qn /norestart");
+        if (exitCode != 0 && exitCode != 3010)
+        {
+            throw new InvalidOperationException($"SecureUxTheme installer failed with exit code {exitCode}.");
+        }
+
+        report.CustomThemeEngineConfigured = true;
+        report.CustomThemeEngineInstalledThisRun = true;
+        report.RebootRequired = true;
+        log(exitCode == 3010
+            ? "SecureUxTheme installed and requested restart. Reboot, then run Fix Everything Automatically once more if Windows still shows Aero.msstyles."
+            : "SecureUxTheme installed. A restart may be needed before Windows accepts TahoeTraffic.msstyles.");
+    }
+
+    private static string DownloadSecureUxThemeInstaller(string installerName)
+    {
+        var downloadDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "JhonLloydMolino",
+            "TahoeTitlebar",
+            "Downloads");
+        Directory.CreateDirectory(downloadDir);
+        var target = Path.Combine(downloadDir, installerName);
+        var url = SecureUxThemeReleaseBaseUrl + installerName;
+
+        using var http = new System.Net.Http.HttpClient();
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("TahoeTitlebarOneClick/0.3.5");
+        using var response = http.GetAsync(url).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+        using var input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+        using var output = File.Create(target);
+        input.CopyTo(output);
+        return target;
+    }
+
+    private static string GetSecureUxThemeInstallerName()
+    {
+        return RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.Arm64 => "SecureUxTheme_ARM64.msi",
+            Architecture.X86 => "SecureUxTheme_x86.msi",
+            _ => "SecureUxTheme_x64.msi"
+        };
+    }
+
+    private static bool IsSecureUxThemeInstalled()
+    {
+        return IsUninstallDisplayNamePresent(RegistryHive.LocalMachine, RegistryView.Registry64, "SecureUxTheme") ||
+            IsUninstallDisplayNamePresent(RegistryHive.LocalMachine, RegistryView.Registry32, "SecureUxTheme") ||
+            IsUninstallDisplayNamePresent(RegistryHive.CurrentUser, RegistryView.Registry64, "SecureUxTheme") ||
+            IsUninstallDisplayNamePresent(RegistryHive.CurrentUser, RegistryView.Registry32, "SecureUxTheme") ||
+            Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SecureUxTheme")) ||
+            Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SecureUxTheme"));
+    }
+
+    private static bool IsUninstallDisplayNamePresent(RegistryHive hive, RegistryView view, string name)
+    {
+        try
+        {
+            using var root = RegistryKey.OpenBaseKey(hive, view);
+            using var uninstall = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            if (uninstall == null)
+            {
+                return false;
+            }
+
+            foreach (var subKeyName in uninstall.GetSubKeyNames())
+            {
+                using var subKey = uninstall.OpenSubKey(subKeyName);
+                var displayName = subKey?.GetValue("DisplayName")?.ToString();
+                if (!string.IsNullOrWhiteSpace(displayName) && displayName.Contains(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
     private void InstallThemePackage(InstallReport report)
     {
         var themeAsset = ResolveThemeAssetStatus();
@@ -431,7 +539,7 @@ public sealed class TahoeInstaller
         log("msstyles source: " + msstylesAsset.Describe());
         if (!report.ThemeApplied)
         {
-            report.MissingRequirements.Add("TahoeTraffic.theme was installed, but Windows did not report TahoeTraffic.msstyles as the active visual style after activation.");
+            report.MissingRequirements.Add("TahoeTraffic.theme was installed, but Windows did not report TahoeTraffic.msstyles as the active visual style after activation. Install/restart SecureUxTheme or provide a compatible signed TahoeTraffic.msstyles.");
         }
     }
 
@@ -1410,6 +1518,33 @@ SchemeName=Windows Default
         }
     }
 
+    private int RunQuietForExit(string fileName, string arguments)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start: " + fileName);
+        var stdout = process.StandardOutput.ReadToEnd();
+        var stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (!string.IsNullOrWhiteSpace(stdout))
+        {
+            log(stdout.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            log(stderr.Trim());
+        }
+
+        return process.ExitCode;
+    }
     private static void TryShellOpen(string path)
     {
         try
@@ -1491,6 +1626,8 @@ SchemeName=Windows Default
         public string CurrentThemeVisualStylePath { get; init; } = "";
         public string TahoeThemeTargetPath { get; init; } = "";
         public bool TahoeThemeCurrentlyApplied { get; init; }
+        public bool CustomThemeEngineInstalled { get; init; }
+        public AssetStatus SecureUxThemeInstallerAsset { get; init; } = AssetStatus.Missing(GetSecureUxThemeInstallerName());
         public bool StartAllBackInstalled { get; init; }
         public string WindowsTerminalSettingsPath { get; init; } = "";
         public bool WindowsTerminalSettingsExists { get; set; }
@@ -1506,6 +1643,8 @@ SchemeName=Windows Default
         public string StatusReason { get; set; } = "";
         public bool ThemeInstalled { get; set; }
         public bool ThemeApplied { get; set; }
+        public bool CustomThemeEngineConfigured { get; set; }
+        public bool CustomThemeEngineInstalledThisRun { get; set; }
         public string CurrentThemePathAfterInstall { get; set; } = "";
         public string CurrentThemeVisualStylePathAfterInstall { get; set; } = "";
         public bool MsstylesInstalled { get; set; }
@@ -1526,6 +1665,7 @@ SchemeName=Windows Default
         public bool AnySafeChangeApplied =>
             ThemeInstalled ||
             ThemeApplied ||
+            CustomThemeEngineConfigured ||
             MsstylesInstalled ||
             BrowserTitlebarsConfigured ||
             WindowsTerminalConfigured ||
@@ -1551,6 +1691,8 @@ SchemeName=Windows Default
                 "Full min/max/close replacement: " + TahoeInstaller.YesNo(FullMinMaxCloseReplacement),
                 "Theme installed: " + TahoeInstaller.YesNo(ThemeInstalled),
                 "Theme applied: " + TahoeInstaller.YesNo(ThemeApplied),
+                "Custom theme signature bypass configured: " + TahoeInstaller.YesNo(CustomThemeEngineConfigured),
+                "Custom theme engine installed this run: " + TahoeInstaller.YesNo(CustomThemeEngineInstalledThisRun),
                 "msstyles installed: " + TahoeInstaller.YesNo(MsstylesInstalled),
                 "Current theme: " + (string.IsNullOrWhiteSpace(CurrentThemePathAfterInstall) ? (string.IsNullOrWhiteSpace(Diagnostics.CurrentThemePath) ? "unknown" : Diagnostics.CurrentThemePath) : CurrentThemePathAfterInstall),
                 "Current visual style: " + (string.IsNullOrWhiteSpace(CurrentThemeVisualStylePathAfterInstall) ? (string.IsNullOrWhiteSpace(Diagnostics.CurrentThemeVisualStylePath) ? "unknown" : Diagnostics.CurrentThemeVisualStylePath) : CurrentThemeVisualStylePathAfterInstall),

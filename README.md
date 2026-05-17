@@ -41,6 +41,7 @@ C:\ProgramData\JhonLloydMolino\TahoeTitlebar\Backups
 
 ## What It Changes
 
+- SecureUxTheme custom-theme signature bypass when Windows falls back to Aero instead of accepting TahoeTraffic.msstyles. The app uses a sidecar MSI when present, otherwise it downloads the latest official SecureUxTheme MSI and installs it silently.
 - Tahoe theme and `.msstyles` package when assets are embedded, supplied in `.\Assets`, or already installed locally as `TahoeTraffic` / compatible local mac-style theme assets. If only the `.theme` file is missing, the app generates it automatically.
 - Browser native titlebar settings for Brave, Chrome, and Edge.
 - Windows Terminal titlebar settings.
@@ -54,6 +55,7 @@ C:\ProgramData\JhonLloydMolino\TahoeTitlebar\Backups
 Before installing, the app checks:
 
 - Windows version/build and current `ApplicationFrame.dll` SHA256.
+- Whether SecureUxTheme is installed or available as a sidecar/downloadable installer.
 - Whether `TahoeTraffic.theme`, `TahoeTraffic.msstyles`, `ApplicationFrame.dll.patched`, and private `ApplicationFrame.patch.json` metadata are available as embedded assets, sidecar assets, or safe local installed assets.
 - StartAllBack installation.
 - Windows Terminal settings path.
@@ -65,7 +67,7 @@ After installing, the app opens a final report with:
 - `Partial` when safe parts were applied but any titlebar surface was skipped, including unsupported Settings/UWP `ApplicationFrame.dll` hashes, missing patch assets, or missing core theme assets.
 - `Failed` when no supported changes were applied.
 
-Unsupported `ApplicationFrame.dll` builds are never patched blindly. They are reported as `Settings/UWP patch skipped`, while safe parts still run. If Windows reports the active theme as `%LOCALAPPDATA%\Microsoft\Windows\Themes\Custom.theme`, the app reads that file and checks its `[VisualStyles] Path` before deciding whether TahoeTraffic is active.
+Unsupported `ApplicationFrame.dll` builds are never patched blindly. They are reported as `Settings/UWP patch skipped`, while safe parts still run. If Windows reports the active theme as `%LOCALAPPDATA%\Microsoft\Windows\Themes\Custom.theme`, the app reads that file and checks its `[VisualStyles] Path` before deciding whether TahoeTraffic is active. If the active visual style is still `Aero.msstyles`, the one-click flow installs SecureUxTheme and requests a restart when needed.
 
 ## StartAllBack Profile
 

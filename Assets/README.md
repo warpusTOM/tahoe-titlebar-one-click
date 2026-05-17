@@ -37,3 +37,13 @@ Private force-patch manifest example:
 ```
 
 This is intentionally private. Do not publish Microsoft DLLs in public release assets.
+
+Optional custom theme bypass sidecar:
+
+```text
+Assets\SecureUxTheme_x64.msi
+Assets\SecureUxTheme_ARM64.msi
+Assets\SecureUxTheme_x86.msi
+```
+
+If the matching MSI is not provided, the app downloads the latest official SecureUxTheme MSI during Fix Everything Automatically when Windows keeps falling back to Aero.msstyles.

@@ -20,8 +20,16 @@ Public builds still apply safe parts automatically:
 - Windows Terminal OS titlebar settings when the settings file exists.
 - StartAllBack Tahoe taskbar/Start menu profile when StartAllBack is installed.
 - DWM/dark/titlebar registry settings.
+- SecureUxTheme custom-theme bypass installation when Windows keeps rejecting TahoeTraffic.msstyles and falling back to Aero.
 
 The Settings/UWP `ApplicationFrame.dll` patch is guarded by a supported-build/hash table plus an optional private `ApplicationFrame.patch.json` manifest. Unsupported builds are reported and skipped. The app never overwrites `ApplicationFrame.dll` unless the current file hash is explicitly supported or privately declared, a matching patch asset hash verifies, and a backup has been written.
+
+### v0.3.5 one-click custom theme bypass
+
+- Adds an automatic SecureUxTheme install/configure step before applying TahoeTraffic.
+- Uses a sidecar `SecureUxTheme_x64.msi` / `SecureUxTheme_ARM64.msi` / `SecureUxTheme_x86.msi` when present, otherwise downloads the latest official SecureUxTheme MSI from GitHub.
+- Marks reboot required when the custom theme engine is installed, then re-runs theme activation and verifies the active visual style.
+- Reports SecureUxTheme/custom-theme bypass status in diagnostics and the final report.
 
 ### v0.3.4 Custom.theme active-theme verification
 

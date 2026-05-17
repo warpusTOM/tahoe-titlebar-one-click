@@ -9,9 +9,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>JhonLloydMolino.TahoeTitlebar</AssemblyName>
     <RootNamespace>TahoeTitlebarOneClick</RootNamespace>
-    <Version>0.3.4</Version>
-    <FileVersion>0.3.4.0</FileVersion>
-    <AssemblyVersion>0.3.4.0</AssemblyVersion>
+    <Version>0.3.5</Version>
+    <FileVersion>0.3.5.0</FileVersion>
+    <AssemblyVersion>0.3.5.0</AssemblyVersion>
     <EmbedPrivateAssets Condition="'$(EmbedPrivateAssets)' == ''">false</EmbedPrivateAssets>
   </PropertyGroup>
 
