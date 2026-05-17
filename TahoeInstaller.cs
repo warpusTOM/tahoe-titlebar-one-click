@@ -227,8 +227,9 @@ public sealed class TahoeInstaller
             TahoeMsstylesAsset = ResolveMsstylesAssetStatus(),
             ApplicationFramePatchedAsset = applicationFramePatchAsset,
             CurrentThemePath = GetCurrentThemePath(),
+            CurrentThemeVisualStylePath = GetThemeVisualStylePath(GetCurrentThemePath()),
             TahoeThemeTargetPath = GetTahoeThemePath(),
-            TahoeThemeCurrentlyApplied = IsThemeApplied(GetTahoeThemePath()),
+            TahoeThemeCurrentlyApplied = IsTahoeThemeActive(),
             StartAllBackInstalled = IsStartAllBackInstalled(),
             WindowsTerminalSettingsPath = GetWindowsTerminalSettingsPath(),
             BrowserProfiles = GetBrowserDiagnostics()
@@ -259,6 +260,7 @@ public sealed class TahoeInstaller
         log("ApplicationFrame.dll SHA256: " + report.ApplicationFrameSha256);
         log("ApplicationFrame support: " + report.ApplicationFrameSupportNote);
         log("Current theme: " + (string.IsNullOrWhiteSpace(report.CurrentThemePath) ? "unknown" : report.CurrentThemePath));
+        log("Current visual style: " + (string.IsNullOrWhiteSpace(report.CurrentThemeVisualStylePath) ? "unknown" : report.CurrentThemeVisualStylePath));
         log("Tahoe theme currently applied: " + YesNo(report.TahoeThemeCurrentlyApplied));
         log("StartAllBack installed: " + YesNo(report.StartAllBackInstalled));
         log("Windows Terminal settings: " + (report.WindowsTerminalSettingsExists ? report.WindowsTerminalSettingsPath : "missing"));
@@ -307,7 +309,7 @@ public sealed class TahoeInstaller
         if (!report.ThemeInstalled || !report.MsstylesInstalled || !report.ThemeApplied)
         {
             yield return report.ThemeInstalled && report.MsstylesInstalled
-                ? "Core TahoeTraffic theme/msstyles installed but Windows did not report TahoeTraffic.theme as the active theme."
+                ? "Core TahoeTraffic theme/msstyles installed but Windows did not report TahoeTraffic.msstyles as the active visual style."
                 : "Core TahoeTraffic theme/msstyles did not fully install.";
         }
 
@@ -421,14 +423,15 @@ public sealed class TahoeInstaller
 
         ForceApplyTheme(themePath);
         report.CurrentThemePathAfterInstall = GetCurrentThemePath();
-        report.ThemeApplied = IsThemeApplied(themePath);
+        report.CurrentThemeVisualStylePathAfterInstall = GetThemeVisualStylePath(report.CurrentThemePathAfterInstall);
+        report.ThemeApplied = IsTahoeThemeActive();
         log("Theme package installed: " + themePath);
         log("Theme applied: " + YesNo(report.ThemeApplied));
         log("Theme source: " + themeAsset.Describe());
         log("msstyles source: " + msstylesAsset.Describe());
         if (!report.ThemeApplied)
         {
-            report.MissingRequirements.Add("TahoeTraffic.theme was installed, but Windows did not report it as the active theme after activation.");
+            report.MissingRequirements.Add("TahoeTraffic.theme was installed, but Windows did not report TahoeTraffic.msstyles as the active visual style after activation.");
         }
     }
 
@@ -1154,16 +1157,73 @@ SchemeName=Windows Default
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Resources", "Themes", "TahoeTraffic.theme");
     }
 
+    private static string GetTahoeMsstylesPath()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Resources", "Themes", "TahoeTraffic", "TahoeTraffic.msstyles");
+    }
+
     private static string GetCurrentThemePath()
     {
         using var themes = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes");
         return themes?.GetValue("CurrentTheme")?.ToString() ?? "";
     }
 
-    private static bool IsThemeApplied(string themePath)
+    private static bool IsTahoeThemeActive()
     {
-        var current = GetCurrentThemePath();
-        return PathsEqual(current, themePath);
+        var currentThemePath = GetCurrentThemePath();
+        return PathsEqual(currentThemePath, GetTahoeThemePath()) ||
+            PathsEqual(GetThemeVisualStylePath(currentThemePath), GetTahoeMsstylesPath());
+    }
+
+    private static string GetThemeVisualStylePath(string themePath)
+    {
+        if (string.IsNullOrWhiteSpace(themePath) || !File.Exists(themePath))
+        {
+            return "";
+        }
+
+        var inVisualStyles = false;
+        foreach (var rawLine in File.ReadLines(themePath))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith(";", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (line.StartsWith("[", StringComparison.Ordinal) && line.EndsWith("]", StringComparison.Ordinal))
+            {
+                inVisualStyles = line.Equals("[VisualStyles]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (!inVisualStyles || !line.StartsWith("Path=", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return NormalizeThemePath(line[5..]);
+        }
+
+        return "";
+    }
+
+    private static string NormalizeThemePath(string path)
+    {
+        var expanded = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+        var resourceDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Resources");
+        expanded = expanded.Replace("%ResourceDir%", resourceDir, StringComparison.OrdinalIgnoreCase);
+        expanded = expanded.Replace("%SystemRoot%", Environment.GetFolderPath(Environment.SpecialFolder.Windows), StringComparison.OrdinalIgnoreCase);
+        expanded = expanded.Replace("%WinDir%", Environment.GetFolderPath(Environment.SpecialFolder.Windows), StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            return Path.GetFullPath(expanded);
+        }
+        catch
+        {
+            return expanded;
+        }
     }
 
     private static bool PathsEqual(string left, string right)
@@ -1428,6 +1488,7 @@ SchemeName=Windows Default
         public bool ApplicationFrameAlreadyPatched { get; init; }
         public string ApplicationFrameSupportNote { get; init; } = "";
         public string CurrentThemePath { get; init; } = "";
+        public string CurrentThemeVisualStylePath { get; init; } = "";
         public string TahoeThemeTargetPath { get; init; } = "";
         public bool TahoeThemeCurrentlyApplied { get; init; }
         public bool StartAllBackInstalled { get; init; }
@@ -1446,6 +1507,7 @@ SchemeName=Windows Default
         public bool ThemeInstalled { get; set; }
         public bool ThemeApplied { get; set; }
         public string CurrentThemePathAfterInstall { get; set; } = "";
+        public string CurrentThemeVisualStylePathAfterInstall { get; set; } = "";
         public bool MsstylesInstalled { get; set; }
         public bool BrowserTitlebarsConfigured { get; set; }
         public bool WindowsTerminalConfigured { get; set; }
@@ -1491,6 +1553,7 @@ SchemeName=Windows Default
                 "Theme applied: " + TahoeInstaller.YesNo(ThemeApplied),
                 "msstyles installed: " + TahoeInstaller.YesNo(MsstylesInstalled),
                 "Current theme: " + (string.IsNullOrWhiteSpace(CurrentThemePathAfterInstall) ? (string.IsNullOrWhiteSpace(Diagnostics.CurrentThemePath) ? "unknown" : Diagnostics.CurrentThemePath) : CurrentThemePathAfterInstall),
+                "Current visual style: " + (string.IsNullOrWhiteSpace(CurrentThemeVisualStylePathAfterInstall) ? (string.IsNullOrWhiteSpace(Diagnostics.CurrentThemeVisualStylePath) ? "unknown" : Diagnostics.CurrentThemeVisualStylePath) : CurrentThemeVisualStylePathAfterInstall),
                 "Browser titlebars configured: " + TahoeInstaller.YesNo(BrowserTitlebarsConfigured),
                 "Windows Terminal configured: " + TahoeInstaller.YesNo(WindowsTerminalConfigured),
                 "StartAllBack configured: " + TahoeInstaller.YesNo(StartAllBackConfigured),

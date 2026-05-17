@@ -23,6 +23,12 @@ Public builds still apply safe parts automatically:
 
 The Settings/UWP `ApplicationFrame.dll` patch is guarded by a supported-build/hash table plus an optional private `ApplicationFrame.patch.json` manifest. Unsupported builds are reported and skipped. The app never overwrites `ApplicationFrame.dll` unless the current file hash is explicitly supported or privately declared, a matching patch asset hash verifies, and a backup has been written.
 
+### v0.3.4 Custom.theme active-theme verification
+
+- Treats Windows `Custom.theme` as Tahoe-applied when its `[VisualStyles] Path` points to `TahoeTraffic\TahoeTraffic.msstyles`.
+- Logs and reports the active visual style path, not only the active theme file path.
+- Fixes false `Theme applied: no` reports after Windows copies the applied theme into the per-user Custom.theme file.
+
 ### v0.3.3 theme activation and private force patch
 
 - Adds explicit theme activation/verification so the report separates `Theme installed` from `Theme applied`.

@@ -61,11 +61,11 @@ Before installing, the app checks:
 
 After installing, the app opens a final report with:
 
-- `Full` only when the core Tahoe theme/`.msstyles` install succeeded, Windows reports the Tahoe theme as active, and the Settings/UWP `ApplicationFrame.dll` titlebar patch is already applied or was applied safely.
+- `Full` only when the core Tahoe theme/`.msstyles` install succeeded, Windows reports the Tahoe visual style as active, and the Settings/UWP `ApplicationFrame.dll` titlebar patch is already applied or was applied safely.
 - `Partial` when safe parts were applied but any titlebar surface was skipped, including unsupported Settings/UWP `ApplicationFrame.dll` hashes, missing patch assets, or missing core theme assets.
 - `Failed` when no supported changes were applied.
 
-Unsupported `ApplicationFrame.dll` builds are never patched blindly. They are reported as `Settings/UWP patch skipped`, while safe parts still run.
+Unsupported `ApplicationFrame.dll` builds are never patched blindly. They are reported as `Settings/UWP patch skipped`, while safe parts still run. If Windows reports the active theme as `%LOCALAPPDATA%\Microsoft\Windows\Themes\Custom.theme`, the app reads that file and checks its `[VisualStyles] Path` before deciding whether TahoeTraffic is active.
 
 ## StartAllBack Profile
 
