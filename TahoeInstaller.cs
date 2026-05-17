@@ -14,6 +14,8 @@ public sealed class TahoeInstaller
 {
     private const string KnownOriginalApplicationFrameSha256 = "FF079E7A4B4DC31E458D179923F50F3FF15F8EB9E2E19A89D7BFB2EE0E4AE47A";
     private const string KnownPatchedApplicationFrameSha256 = "E714259B03ECBE49E2A6F04AC471519F7D2E002CA50FA519A01B7B198D86DBA2";
+    private const string PrivateApplicationFramePatchManifestName = "ApplicationFrame.patch.json";
+    private const string DefaultApplicationFramePatchAssetName = "ApplicationFrame.dll.patched";
     private static readonly SupportedApplicationFramePatch[] SupportedApplicationFramePatches =
     [
         new(
@@ -21,7 +23,8 @@ public sealed class TahoeInstaller
             WindowsBuild: "Add exact build after verification",
             OriginalSha256: KnownOriginalApplicationFrameSha256,
             PatchedSha256: KnownPatchedApplicationFrameSha256,
-            PatchedAssetName: "ApplicationFrame.dll.patched")
+            PatchedAssetName: DefaultApplicationFramePatchAssetName,
+            Source: "built-in supported table")
     ];
 
     private readonly Action<string> log;
@@ -198,10 +201,12 @@ public sealed class TahoeInstaller
         var windows = GetWindowsBuildInfo();
         var applicationFramePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ApplicationFrame.dll");
         var applicationFrameHash = File.Exists(applicationFramePath) ? Sha256(applicationFramePath) : "";
-        var supportedPatch = SupportedApplicationFramePatches.FirstOrDefault(p =>
+        var availablePatches = LoadApplicationFramePatches(out var privatePatchNote);
+        var supportedPatch = availablePatches.FirstOrDefault(p =>
             applicationFrameHash.Equals(p.OriginalSha256, StringComparison.OrdinalIgnoreCase));
-        var alreadyPatched = SupportedApplicationFramePatches.Any(p =>
+        var alreadyPatched = availablePatches.Any(p =>
             applicationFrameHash.Equals(p.PatchedSha256, StringComparison.OrdinalIgnoreCase));
+        var applicationFramePatchAsset = FindAsset(supportedPatch?.PatchedAssetName ?? DefaultApplicationFramePatchAssetName);
 
         var report = new DiagnosticsReport
         {
@@ -212,13 +217,18 @@ public sealed class TahoeInstaller
             ApplicationFrameSupported = supportedPatch != null || alreadyPatched,
             ApplicationFrameAlreadyPatched = alreadyPatched,
             ApplicationFrameSupportNote = supportedPatch != null
-                ? $"Supported patch table match: {supportedPatch.Id} ({supportedPatch.WindowsBuild})"
+                ? $"Supported patch match: {supportedPatch.Id} ({supportedPatch.WindowsBuild}, {supportedPatch.Source})"
                 : alreadyPatched
                     ? "Current ApplicationFrame.dll already matches a supported patched hash."
                     : "Unsupported build/hash. Settings/UWP patch will be skipped.",
+            ApplicationFramePatchManifest = FindAsset(PrivateApplicationFramePatchManifestName),
+            ApplicationFramePatchManifestNote = privatePatchNote,
             TahoeThemeAsset = ResolveThemeAssetStatus(),
             TahoeMsstylesAsset = ResolveMsstylesAssetStatus(),
-            ApplicationFramePatchedAsset = FindAsset("ApplicationFrame.dll.patched"),
+            ApplicationFramePatchedAsset = applicationFramePatchAsset,
+            CurrentThemePath = GetCurrentThemePath(),
+            TahoeThemeTargetPath = GetTahoeThemePath(),
+            TahoeThemeCurrentlyApplied = IsThemeApplied(GetTahoeThemePath()),
             StartAllBackInstalled = IsStartAllBackInstalled(),
             WindowsTerminalSettingsPath = GetWindowsTerminalSettingsPath(),
             BrowserProfiles = GetBrowserDiagnostics()
@@ -241,8 +251,15 @@ public sealed class TahoeInstaller
         log("TahoeTraffic.theme: " + report.TahoeThemeAsset.Describe());
         log("TahoeTraffic.msstyles: " + report.TahoeMsstylesAsset.Describe());
         log("ApplicationFrame.dll.patched: " + report.ApplicationFramePatchedAsset.Describe());
+        log("ApplicationFrame.patch.json: " + report.ApplicationFramePatchManifest.Describe());
+        if (!string.IsNullOrWhiteSpace(report.ApplicationFramePatchManifestNote))
+        {
+            log("Private patch manifest: " + report.ApplicationFramePatchManifestNote);
+        }
         log("ApplicationFrame.dll SHA256: " + report.ApplicationFrameSha256);
         log("ApplicationFrame support: " + report.ApplicationFrameSupportNote);
+        log("Current theme: " + (string.IsNullOrWhiteSpace(report.CurrentThemePath) ? "unknown" : report.CurrentThemePath));
+        log("Tahoe theme currently applied: " + YesNo(report.TahoeThemeCurrentlyApplied));
         log("StartAllBack installed: " + YesNo(report.StartAllBackInstalled));
         log("Windows Terminal settings: " + (report.WindowsTerminalSettingsExists ? report.WindowsTerminalSettingsPath : "missing"));
         foreach (var browser in report.BrowserProfiles)
@@ -259,6 +276,10 @@ public sealed class TahoeInstaller
         if (!report.ApplicationFrameSupported)
         {
             log("Settings/UWP patch skipped: current ApplicationFrame.dll hash is not in the supported-build table.");
+            if (report.ApplicationFramePatchedAsset.Exists && !report.ApplicationFramePatchManifest.Exists)
+            {
+                log("Private force patch blocked: ApplicationFrame.dll.patched exists but ApplicationFrame.patch.json is missing.");
+            }
         }
     }
 
@@ -283,9 +304,11 @@ public sealed class TahoeInstaller
 
     private static IEnumerable<string> GetCompletionBlockers(InstallReport report)
     {
-        if (!report.ThemeInstalled || !report.MsstylesInstalled)
+        if (!report.ThemeInstalled || !report.MsstylesInstalled || !report.ThemeApplied)
         {
-            yield return "Core TahoeTraffic theme/msstyles did not fully install.";
+            yield return report.ThemeInstalled && report.MsstylesInstalled
+                ? "Core TahoeTraffic theme/msstyles installed but Windows did not report TahoeTraffic.theme as the active theme."
+                : "Core TahoeTraffic theme/msstyles did not fully install.";
         }
 
         if (!report.SettingsPatchApplied)
@@ -374,7 +397,7 @@ public sealed class TahoeInstaller
 
         var themeDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Resources", "Themes");
         var tahoeDir = Path.Combine(themeDir, "TahoeTraffic");
-        var themePath = Path.Combine(themeDir, "TahoeTraffic.theme");
+        var themePath = GetTahoeThemePath();
         var msstylesPath = Path.Combine(tahoeDir, "TahoeTraffic.msstyles");
 
         Directory.CreateDirectory(tahoeDir);
@@ -396,10 +419,17 @@ public sealed class TahoeInstaller
         personalize?.SetValue("SystemUsesLightTheme", 0, RegistryValueKind.DWord);
         personalize?.SetValue("EnableTransparency", 1, RegistryValueKind.DWord);
 
-        TryShellOpen(themePath);
+        ForceApplyTheme(themePath);
+        report.CurrentThemePathAfterInstall = GetCurrentThemePath();
+        report.ThemeApplied = IsThemeApplied(themePath);
         log("Theme package installed: " + themePath);
+        log("Theme applied: " + YesNo(report.ThemeApplied));
         log("Theme source: " + themeAsset.Describe());
         log("msstyles source: " + msstylesAsset.Describe());
+        if (!report.ThemeApplied)
+        {
+            report.MissingRequirements.Add("TahoeTraffic.theme was installed, but Windows did not report it as the active theme after activation.");
+        }
     }
 
     private void InstallRegistrySettings()
@@ -685,7 +715,12 @@ public sealed class TahoeInstaller
         }
 
         var currentHash = Sha256(target);
-        var alreadyPatched = SupportedApplicationFramePatches.FirstOrDefault(p =>
+        var availablePatches = LoadApplicationFramePatches(out var privatePatchNote);
+        if (!string.IsNullOrWhiteSpace(privatePatchNote))
+        {
+            log("Private patch manifest: " + privatePatchNote);
+        }
+        var alreadyPatched = availablePatches.FirstOrDefault(p =>
             currentHash.Equals(p.PatchedSha256, StringComparison.OrdinalIgnoreCase));
         if (alreadyPatched != null)
         {
@@ -694,7 +729,7 @@ public sealed class TahoeInstaller
             return;
         }
 
-        var supportedPatch = SupportedApplicationFramePatches.FirstOrDefault(p =>
+        var supportedPatch = availablePatches.FirstOrDefault(p =>
             currentHash.Equals(p.OriginalSha256, StringComparison.OrdinalIgnoreCase));
         if (supportedPatch == null)
         {
@@ -703,6 +738,7 @@ public sealed class TahoeInstaller
             log("This protects the laptop from a wrong system DLL. Browser/theme parts still apply.");
             report.SettingsPatchSkippedReason = "Unsupported ApplicationFrame.dll hash: " + currentHash;
             report.MissingRequirements.Add("Settings/UWP patch skipped because this Windows build/hash is not in the supported table.");
+            AddPrivatePatchGuidance(report, currentHash);
             return;
         }
 
@@ -711,7 +747,7 @@ public sealed class TahoeInstaller
             log("Skipped ApplicationFrame.dll: no patched DLL asset is embedded or beside the EXE.");
             log("For public builds, do not redistribute Microsoft system DLLs. Use a private local asset if you own the test machine.");
             report.SettingsPatchSkippedReason = "No verified patched ApplicationFrame.dll asset was found.";
-            report.MissingRequirements.Add("ApplicationFrame.dll.patched is missing. Public builds intentionally do not redistribute Microsoft DLLs.");
+            report.MissingRequirements.Add($"{supportedPatch.PatchedAssetName} is missing. Public builds intentionally do not redistribute Microsoft DLLs.");
             return;
         }
 
@@ -721,7 +757,7 @@ public sealed class TahoeInstaller
         var patchedHash = Sha256(temp);
         if (!patchedHash.Equals(supportedPatch.PatchedSha256, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Embedded ApplicationFrame patch hash does not match expected patch.");
+            throw new InvalidOperationException($"ApplicationFrame patch hash mismatch. Expected {supportedPatch.PatchedSha256}, got {patchedHash}.");
         }
 
         CloseProcesses(["SystemSettings", "ApplicationFrameHost"]);
@@ -734,11 +770,127 @@ public sealed class TahoeInstaller
         {
             RunQuiet("cmd.exe", $"/c copy /Y \"{temp}\" \"{target}\"", ignoreExitCode: false);
         }
-        log("Patched Settings/UWP titlebar file: " + target);
+        var installedHash = Sha256(target);
+        if (!installedHash.Equals(supportedPatch.PatchedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"ApplicationFrame.dll copy verification failed. Expected {supportedPatch.PatchedSha256}, got {installedHash}.");
+        }
+        log($"Patched Settings/UWP titlebar file: {target} ({supportedPatch.Id}, {supportedPatch.Source})");
         report.SettingsPatchApplied = true;
         report.RebootRequired = true;
     }
 
+    private static SupportedApplicationFramePatch[] LoadApplicationFramePatches(out string privatePatchNote)
+    {
+        var patches = new List<SupportedApplicationFramePatch>(SupportedApplicationFramePatches);
+        privatePatchNote = "";
+
+        var manifestAsset = FindAsset(PrivateApplicationFramePatchManifestName);
+        if (!manifestAsset.Exists)
+        {
+            return [.. patches];
+        }
+
+        try
+        {
+            var json = ReadTextResourceOrSidecar(PrivateApplicationFramePatchManifestName)
+                ?? throw new FileNotFoundException("Could not open private patch manifest.");
+            var manifest = JsonSerializer.Deserialize<ApplicationFramePatchManifest>(
+                json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidOperationException("Private patch manifest is empty.");
+
+            var originalSha256 = NormalizeSha256(manifest.OriginalSha256);
+            var patchedSha256 = NormalizeSha256(manifest.PatchedSha256);
+            if (!IsSha256Hash(originalSha256) || !IsSha256Hash(patchedSha256))
+            {
+                throw new InvalidOperationException("originalSha256 and patchedSha256 must be valid SHA256 hashes.");
+            }
+
+            var assetName = string.IsNullOrWhiteSpace(manifest.PatchedAssetName)
+                ? DefaultApplicationFramePatchAssetName
+                : manifest.PatchedAssetName.Trim();
+            var id = string.IsNullOrWhiteSpace(manifest.Id) ? "private-local" : manifest.Id.Trim();
+            var windowsBuild = string.IsNullOrWhiteSpace(manifest.WindowsBuild) ? "private verified build" : manifest.WindowsBuild.Trim();
+
+            patches.Add(new SupportedApplicationFramePatch(
+                Id: id,
+                WindowsBuild: windowsBuild,
+                OriginalSha256: originalSha256,
+                PatchedSha256: patchedSha256,
+                PatchedAssetName: assetName,
+                Source: "private patch manifest"));
+            privatePatchNote = $"Loaded {PrivateApplicationFramePatchManifestName}: {id}, asset {assetName}.";
+        }
+        catch (Exception ex)
+        {
+            privatePatchNote = $"Ignored invalid {PrivateApplicationFramePatchManifestName}: {ex.Message}";
+        }
+
+        return [.. patches];
+    }
+
+    private void AddPrivatePatchGuidance(InstallReport report, string currentHash)
+    {
+        var manifestAsset = FindAsset(PrivateApplicationFramePatchManifestName);
+        var patchAsset = FindAsset(DefaultApplicationFramePatchAssetName);
+        var patchedHash = File.Exists(patchAsset.Path)
+            ? Sha256(patchAsset.Path)
+            : "<SHA256 of your patched ApplicationFrame.dll.patched>";
+
+        if (patchAsset.Exists && !manifestAsset.Exists)
+        {
+            report.MissingRequirements.Add($"{DefaultApplicationFramePatchAssetName} was found, but {PrivateApplicationFramePatchManifestName} is missing. Add the manifest so the private force patch can verify both hashes before copying.");
+        }
+        else if (!manifestAsset.Exists)
+        {
+            report.MissingRequirements.Add($"Private force patch needs Assets\\{PrivateApplicationFramePatchManifestName} and Assets\\{DefaultApplicationFramePatchAssetName} for this exact ApplicationFrame.dll hash.");
+        }
+        else
+        {
+            report.MissingRequirements.Add($"Private force patch manifest did not match the current ApplicationFrame.dll hash: {currentHash}.");
+        }
+
+        log($@"Private force patch format:
+{{
+  ""id"": ""private-26200-8037"",
+  ""windowsBuild"": ""Windows 10 Pro 25H2, build 26200.8037"",
+  ""originalSha256"": ""{currentHash}"",
+  ""patchedSha256"": ""{patchedHash}"",
+  ""patchedAssetName"": ""{DefaultApplicationFramePatchAssetName}""
+}}");
+    }
+
+    private static string? ReadTextResourceOrSidecar(string shortName)
+    {
+        var resourceName = Assembly.GetExecutingAssembly()
+            .GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("." + shortName, StringComparison.OrdinalIgnoreCase));
+        if (resourceName != null)
+        {
+            using var input = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
+            if (input == null)
+            {
+                return null;
+            }
+
+            using var reader = new StreamReader(input);
+            return reader.ReadToEnd();
+        }
+
+        var sidecar = FindSidecarAsset(shortName);
+        return sidecar == null ? null : File.ReadAllText(sidecar);
+    }
+
+    private static string NormalizeSha256(string? value)
+    {
+        return new string((value ?? "").Where(Uri.IsHexDigit).ToArray()).ToUpperInvariant();
+    }
+
+    private static bool IsSha256Hash(string value)
+    {
+        return value.Length == 64 && value.All(Uri.IsHexDigit);
+    }
     private void PrepareSystemFileForWrite(string path)
     {
         var aclPath = Path.Combine(string.IsNullOrWhiteSpace(currentBackupDir) ? programDataRoot : currentBackupDir, "ApplicationFrame.dll.icacls.txt");
@@ -988,6 +1140,50 @@ SchemeName=Windows Default
 """;
     }
 
+    private void ForceApplyTheme(string themePath)
+    {
+        TryShellOpen(themePath);
+        BroadcastThemeChange();
+        RunQuiet("rundll32.exe", "user32.dll,UpdatePerUserSystemParameters", ignoreExitCode: true);
+        Thread.Sleep(750);
+        BroadcastThemeChange();
+    }
+
+    private static string GetTahoeThemePath()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Resources", "Themes", "TahoeTraffic.theme");
+    }
+
+    private static string GetCurrentThemePath()
+    {
+        using var themes = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes");
+        return themes?.GetValue("CurrentTheme")?.ToString() ?? "";
+    }
+
+    private static bool IsThemeApplied(string themePath)
+    {
+        var current = GetCurrentThemePath();
+        return PathsEqual(current, themePath);
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        try
+        {
+            var normalizedLeft = Path.GetFullPath(Environment.ExpandEnvironmentVariables(left));
+            var normalizedRight = Path.GetFullPath(Environment.ExpandEnvironmentVariables(right));
+            return normalizedLeft.Equals(normalizedRight, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return left.Equals(right, StringComparison.OrdinalIgnoreCase);
+        }
+    }
     private static string GetWindowsBuildInfo()
     {
         using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
@@ -1166,6 +1362,13 @@ SchemeName=Windows Default
         }
     }
 
+    private static void BroadcastThemeChange()
+    {
+        SendMessageTimeout(new IntPtr(0xffff), 0x031A, IntPtr.Zero, "", 0x0002, 5000, out _);
+        SendMessageTimeout(new IntPtr(0xffff), 0x001A, IntPtr.Zero, "ImmersiveColorSet", 0x0002, 5000, out _);
+        SendMessageTimeout(new IntPtr(0xffff), 0x001A, IntPtr.Zero, "WindowsThemeElement", 0x0002, 5000, out _);
+        SendMessageTimeout(new IntPtr(0xffff), 0x001A, IntPtr.Zero, "Policy", 0x0002, 5000, out _);
+    }
     private static void BroadcastSettingChange()
     {
         SendMessageTimeout(new IntPtr(0xffff), 0x001A, IntPtr.Zero, "Environment", 0x0002, 5000, out _);
@@ -1216,12 +1419,17 @@ SchemeName=Windows Default
         public string AssetsDirectory { get; init; } = "";
         public AssetStatus TahoeThemeAsset { get; init; } = AssetStatus.Missing("TahoeTraffic.theme");
         public AssetStatus TahoeMsstylesAsset { get; init; } = AssetStatus.Missing("TahoeTraffic.msstyles");
-        public AssetStatus ApplicationFramePatchedAsset { get; init; } = AssetStatus.Missing("ApplicationFrame.dll.patched");
+        public AssetStatus ApplicationFramePatchedAsset { get; init; } = AssetStatus.Missing(DefaultApplicationFramePatchAssetName);
+        public AssetStatus ApplicationFramePatchManifest { get; init; } = AssetStatus.Missing(PrivateApplicationFramePatchManifestName);
+        public string ApplicationFramePatchManifestNote { get; init; } = "";
         public string ApplicationFramePath { get; init; } = "";
         public string ApplicationFrameSha256 { get; init; } = "";
         public bool ApplicationFrameSupported { get; init; }
         public bool ApplicationFrameAlreadyPatched { get; init; }
         public string ApplicationFrameSupportNote { get; init; } = "";
+        public string CurrentThemePath { get; init; } = "";
+        public string TahoeThemeTargetPath { get; init; } = "";
+        public bool TahoeThemeCurrentlyApplied { get; init; }
         public bool StartAllBackInstalled { get; init; }
         public string WindowsTerminalSettingsPath { get; init; } = "";
         public bool WindowsTerminalSettingsExists { get; set; }
@@ -1236,6 +1444,8 @@ SchemeName=Windows Default
         public string FinalStatus { get; set; } = "Failed";
         public string StatusReason { get; set; } = "";
         public bool ThemeInstalled { get; set; }
+        public bool ThemeApplied { get; set; }
+        public string CurrentThemePathAfterInstall { get; set; } = "";
         public bool MsstylesInstalled { get; set; }
         public bool BrowserTitlebarsConfigured { get; set; }
         public bool WindowsTerminalConfigured { get; set; }
@@ -1253,6 +1463,7 @@ SchemeName=Windows Default
 
         public bool AnySafeChangeApplied =>
             ThemeInstalled ||
+            ThemeApplied ||
             MsstylesInstalled ||
             BrowserTitlebarsConfigured ||
             WindowsTerminalConfigured ||
@@ -1262,6 +1473,7 @@ SchemeName=Windows Default
 
         public bool FullMinMaxCloseReplacement =>
             ThemeInstalled &&
+            ThemeApplied &&
             MsstylesInstalled &&
             SettingsPatchApplied;
 
@@ -1276,7 +1488,9 @@ SchemeName=Windows Default
                 "ApplicationFrame.dll SHA256: " + Diagnostics.ApplicationFrameSha256,
                 "Full min/max/close replacement: " + TahoeInstaller.YesNo(FullMinMaxCloseReplacement),
                 "Theme installed: " + TahoeInstaller.YesNo(ThemeInstalled),
+                "Theme applied: " + TahoeInstaller.YesNo(ThemeApplied),
                 "msstyles installed: " + TahoeInstaller.YesNo(MsstylesInstalled),
+                "Current theme: " + (string.IsNullOrWhiteSpace(CurrentThemePathAfterInstall) ? (string.IsNullOrWhiteSpace(Diagnostics.CurrentThemePath) ? "unknown" : Diagnostics.CurrentThemePath) : CurrentThemePathAfterInstall),
                 "Browser titlebars configured: " + TahoeInstaller.YesNo(BrowserTitlebarsConfigured),
                 "Windows Terminal configured: " + TahoeInstaller.YesNo(WindowsTerminalConfigured),
                 "StartAllBack configured: " + TahoeInstaller.YesNo(StartAllBackConfigured),
@@ -1325,6 +1539,14 @@ SchemeName=Windows Default
 
     public sealed record BrowserDiagnostic(string Name, bool ExeExists, int ProfileCount, int ShortcutCount);
 
+    private sealed class ApplicationFramePatchManifest
+    {
+        public string Id { get; set; } = "";
+        public string WindowsBuild { get; set; } = "";
+        public string OriginalSha256 { get; set; } = "";
+        public string PatchedSha256 { get; set; } = "";
+        public string PatchedAssetName { get; set; } = DefaultApplicationFramePatchAssetName;
+    }
     private sealed record BrowserDiagnosticInput(string Name, string ExePath, string DefaultPreferencesPath, string[] ShortcutPaths);
 
     private sealed record SupportedApplicationFramePatch(
@@ -1332,7 +1554,8 @@ SchemeName=Windows Default
         string WindowsBuild,
         string OriginalSha256,
         string PatchedSha256,
-        string PatchedAssetName);
+        string PatchedAssetName,
+        string Source);
 
     private sealed record BrowserInfo(
         string Name,

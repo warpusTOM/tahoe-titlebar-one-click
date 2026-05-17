@@ -4,7 +4,7 @@ This public build keeps the installer redistributable:
 
 - It does not bundle StartAllBack, StartAllBack license data, or private StartAllBack program files.
 - It does not bundle Microsoft system DLLs.
-- Private/test assets such as `ApplicationFrame.dll.patched`, `TahoeTraffic.theme`, and `TahoeTraffic.msstyles` are intentionally ignored by git unless redistribution rights are cleared.
+- Private/test assets such as `ApplicationFrame.dll.patched`, `ApplicationFrame.patch.json`, `TahoeTraffic.theme`, and `TahoeTraffic.msstyles` are intentionally ignored by git unless redistribution rights are cleared.
 - It cannot redistribute Microsoft DLLs or third-party private theme binaries, but it now generates `TahoeTraffic.theme` automatically and reuses an already-installed local `TahoeTraffic.msstyles` / compatible local mac-style theme when present.
 
 The app includes the one-click UX:
@@ -12,7 +12,7 @@ The app includes the one-click UX:
 - `Fix Everything Automatically`
 - `Old Windows close/minimize/maximize + taskbar`
 
-`Fix Everything Automatically` runs diagnosis first, applies every safe supported change, verifies the result, and opens a final report with `Full`, `Partial`, or `Failed` status. `Full` is reserved for machines where the core theme/msstyles and Settings/UWP titlebar patch are actually applied; unsupported `ApplicationFrame.dll` hashes now report `Partial` with a clear status reason.
+`Fix Everything Automatically` runs diagnosis first, applies every safe supported change, verifies the result, and opens a final report with `Full`, `Partial`, or `Failed` status. `Full` is reserved for machines where the core theme/msstyles are installed and active, and the Settings/UWP titlebar patch is actually applied; unsupported `ApplicationFrame.dll` hashes report `Partial` with a clear status reason.
 
 Public builds still apply safe parts automatically:
 
@@ -21,7 +21,14 @@ Public builds still apply safe parts automatically:
 - StartAllBack Tahoe taskbar/Start menu profile when StartAllBack is installed.
 - DWM/dark/titlebar registry settings.
 
-The Settings/UWP `ApplicationFrame.dll` patch is guarded by a supported-build/hash table. Unsupported builds are reported and skipped. The app never overwrites `ApplicationFrame.dll` unless the current file hash is explicitly supported, a matching patch asset exists, and a backup has been written.
+The Settings/UWP `ApplicationFrame.dll` patch is guarded by a supported-build/hash table plus an optional private `ApplicationFrame.patch.json` manifest. Unsupported builds are reported and skipped. The app never overwrites `ApplicationFrame.dll` unless the current file hash is explicitly supported or privately declared, a matching patch asset hash verifies, and a backup has been written.
+
+### v0.3.3 theme activation and private force patch
+
+- Adds explicit theme activation/verification so the report separates `Theme installed` from `Theme applied`.
+- Adds private force-patch support through `Assets\ApplicationFrame.patch.json` with exact original/patched SHA256 verification.
+- Verifies the copied `ApplicationFrame.dll` hash after patching before reporting Settings/UWP success.
+- Public release still does not redistribute Microsoft DLLs or patch unsupported hashes without a private manifest.
 
 ### v0.3.2 report honesty fix
 

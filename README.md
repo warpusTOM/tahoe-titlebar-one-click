@@ -26,7 +26,7 @@ Get the latest public build from:
 
 [github.com/warpusTOM/Tahoe-Style-Min-Max-Close/releases/latest](https://github.com/warpusTOM/Tahoe-Style-Min-Max-Close/releases/latest)
 
-The public release is intentionally safe to redistribute. It does not include Microsoft system DLLs, and it does not claim a full visual replacement when the theme assets are missing.
+The public release is intentionally safe to redistribute. It does not include Microsoft system DLLs, and it does not claim a full visual replacement when the theme/assets or Settings/UWP patch are missing or not active.
 
 ## One-Click Options
 
@@ -47,21 +47,21 @@ C:\ProgramData\JhonLloydMolino\TahoeTitlebar\Backups
 - DWM, dark mode, and titlebar-related registry settings.
 - StartAllBack taskbar and Start menu glass profile when StartAllBack is already installed.
 - Explorer taskbar visibility/alignment values that support the Tahoe taskbar profile.
-- Guarded `ApplicationFrame.dll` replacement support for Settings/UWP titlebars only when the current Windows build/hash is explicitly supported and a matching verified patch asset is available.
+- Guarded `ApplicationFrame.dll` replacement support for Settings/UWP titlebars only when the current Windows build/hash is explicitly supported, or when a private sidecar manifest declares an exact original SHA256 and patched SHA256 for a matching patch asset.
 
 ## Auto Diagnose and Final Report
 
 Before installing, the app checks:
 
 - Windows version/build and current `ApplicationFrame.dll` SHA256.
-- Whether `TahoeTraffic.theme`, `TahoeTraffic.msstyles`, and `ApplicationFrame.dll.patched` are available as embedded assets, sidecar assets, or safe local installed assets.
+- Whether `TahoeTraffic.theme`, `TahoeTraffic.msstyles`, `ApplicationFrame.dll.patched`, and private `ApplicationFrame.patch.json` metadata are available as embedded assets, sidecar assets, or safe local installed assets.
 - StartAllBack installation.
 - Windows Terminal settings path.
 - Brave, Chrome, and Edge executables, profiles, and shortcuts.
 
 After installing, the app opens a final report with:
 
-- `Full` only when the core Tahoe theme/`.msstyles` install succeeded and the Settings/UWP `ApplicationFrame.dll` titlebar patch is already applied or was applied safely.
+- `Full` only when the core Tahoe theme/`.msstyles` install succeeded, Windows reports the Tahoe theme as active, and the Settings/UWP `ApplicationFrame.dll` titlebar patch is already applied or was applied safely.
 - `Partial` when safe parts were applied but any titlebar surface was skipped, including unsupported Settings/UWP `ApplicationFrame.dll` hashes, missing patch assets, or missing core theme assets.
 - `Failed` when no supported changes were applied.
 
@@ -105,6 +105,7 @@ This source tree does not publish private/test binary assets. For your own priva
 - `TahoeTraffic.theme`
 - `TahoeTraffic.msstyles`
 - `ApplicationFrame.dll.patched`
+- `ApplicationFrame.patch.json`
 
 Do not publicly redistribute Microsoft system DLLs as standalone assets.
 
@@ -114,6 +115,30 @@ For public builds, the app can generate `TahoeTraffic.theme` and can reuse an al
 Assets\TahoeTraffic.theme
 Assets\TahoeTraffic.msstyles
 Assets\ApplicationFrame.dll.patched
+Assets\ApplicationFrame.patch.json
 ```
 
-The DLL patch is used only if the current `ApplicationFrame.dll` hash matches the supported-build table in source code and the patch asset hash matches the expected patched hash.
+The DLL patch is used only if the current `ApplicationFrame.dll` hash matches the supported-build table in source code, or if a private `ApplicationFrame.patch.json` beside the EXE declares the exact current original hash and expected patched hash. The app verifies the patch asset hash before copying and verifies the installed system DLL hash after copying.
+
+### Private force patch manifest
+
+For a private/local build or sidecar-only test on your own machine, put both files beside the EXE:
+
+```text
+Assets\ApplicationFrame.dll.patched
+Assets\ApplicationFrame.patch.json
+```
+
+Example manifest:
+
+```json
+{
+  "id": "private-26200-8037",
+  "windowsBuild": "Windows 10 Pro 25H2, build 26200.8037",
+  "originalSha256": "CE3523DCFDBE417937CE98B3FD21C78498D018D756099BB76553AFE05E0948E2",
+  "patchedSha256": "SHA256_OF_YOUR_PATCHED_APPLICATIONFRAME_DLL",
+  "patchedAssetName": "ApplicationFrame.dll.patched"
+}
+```
+
+This is the only force path. Without a matching manifest and patched hash, the app still skips the system DLL patch to avoid installing the wrong `ApplicationFrame.dll`.
